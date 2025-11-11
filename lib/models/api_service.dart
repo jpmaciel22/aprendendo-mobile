@@ -256,4 +256,27 @@ class ApiService {
       };
     }
   }
+  Future<Map<String, dynamic>> marcarConsultaRealizada(int codigo) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tasks/realizar'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'codigo': codigo,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      return {
+        'success': response.statusCode == 201,
+        'message': data['message'] ?? 'Erro desconhecido',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erro de conexão: $e',
+      };
+    }
+  }
 }

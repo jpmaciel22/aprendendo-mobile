@@ -85,6 +85,77 @@ class _AgendamentosPageState extends State<AgendamentosPage> {
     setState(() => _isLoading = false);
   }
 
+  Future<void> _marcarComoRealizada(Map<String, dynamic> consulta) async {
+    // Confirmar ação
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar'),
+        content: Text(
+          'Deseja marcar a consulta ${consulta['codigo']} como realizada?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Confirmar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      final result = await _apiService.marcarConsultaRealizada(consulta['codigo']);
+
+      // Fechar loading
+      Navigator.pop(context);
+
+      if (result['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Recarregar lista
+        _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      // Fechar loading
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao marcar consulta: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   int _compararDatas(String? data1, String? data2) {
     try {
       final d1 = DateTime.parse(data1 ?? '');
@@ -230,6 +301,7 @@ class _AgendamentosPageState extends State<AgendamentosPage> {
   Widget _buildConsultaCard(Map<String, dynamic> consulta, Color accentColor) {
     final isMedico = _userData!['type'] == 'medico';
     final status = (consulta['status'] ?? 'em-andamento').toLowerCase();
+    final isEmAndamento = !status.contains('realizado');
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -277,11 +349,11 @@ class _AgendamentosPageState extends State<AgendamentosPage> {
                     : consulta['medico_nome'] ?? 'Médico',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              // subtitle: Text(
-              //   isMedico
-              //       ? 'Paciente'
-              //       : consulta['medico_especializacao'] ?? 'Especialização',
-              // ),
+              subtitle: Text(
+                isMedico
+                    ? 'Paciente'
+                    : consulta['medico_especializacao'] ?? 'Especialização',
+              ),
             ),
 
             const SizedBox(height: 8),
@@ -339,6 +411,29 @@ class _AgendamentosPageState extends State<AgendamentosPage> {
                 ],
               ),
             ),
+
+            // Botão "Marcar como Realizada" - APENAS PARA MÉDICO
+            if (isMedico && isEmAndamento) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _marcarComoRealizada(consulta),
+                  icon: const Icon(Icons.check_circle, color: Colors.white),
+                  label: const Text(
+                    'Marcar como Realizada',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
