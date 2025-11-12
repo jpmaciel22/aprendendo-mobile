@@ -15,59 +15,102 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
   final ApiService _apiService = ApiService();
 
   DateTime? _selectedDate;
-  TimeOfDay? _selectedTime;
-  String? _selectedClienteCpf;
-  List<dynamic> _clientes = [];
+  String? _selectedMedicoCpf;
+  Map<String, dynamic>? _selectedHorario; // Horário completo com hora_inicio e hora_fim
+
+  List<dynamic> _medicos = [];
+  List<dynamic> _horariosDisponiveis = [];
+
   bool _isLoading = false;
-  bool _isLoadingClientes = true;
+  bool _isLoadingMedicos = true;
+  bool _isLoadingHorarios = false;
 
   @override
   void initState() {
     super.initState();
-    _loadClientes();
+    _loadMedicos();
   }
 
-  Future<void> _loadClientes() async {
-    setState(() => _isLoadingClientes = true);
+  Future<void> _loadMedicos() async {
+    setState(() => _isLoadingMedicos = true);
 
     try {
-      final clientes = await _apiService.getMedicos(); // Método retorna users agora
+      final medicos = await _apiService.getMedicos();
 
       setState(() {
-        _clientes = clientes;
-        _isLoadingClientes = false;
+        _medicos = medicos;
+        _isLoadingMedicos = false;
       });
     } catch (e) {
-      print('Erro ao carregar clientes: $e');
+      print('Erro ao carregar médicos: $e');
       setState(() {
-        _clientes = [];
-        _isLoadingClientes = false;
+        _medicos = [];
+        _isLoadingMedicos = false;
       });
     }
   }
 
   Future<void> _selectDate() async {
+    if (_selectedMedicoCpf == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione um médico primeiro'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('pt', 'BR'),
     );
 
     if (picked != null) {
-      setState(() => _selectedDate = picked);
+      setState(() {
+        _selectedDate = picked;
+        _selectedHorario = null; // Reseta horário quando muda a data
+      });
+
+      // Buscar horários disponíveis
+      await _loadHorariosDisponiveis();
     }
   }
 
-  Future<void> _selectTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
+  Future<void> _loadHorariosDisponiveis() async {
+    if (_selectedMedicoCpf == null || _selectedDate == null) return;
 
-    if (picked != null) {
-      setState(() => _selectedTime = picked);
+    setState(() => _isLoadingHorarios = true);
+
+    try {
+      final dataFormatada = _selectedDate!.toIso8601String().split('T')[0]; // YYYY-MM-DD
+
+      final horarios = await _apiService.getHorariosDisponiveis(
+        medicoCpf: _selectedMedicoCpf!,
+        data: dataFormatada,
+      );
+
+      setState(() {
+        _horariosDisponiveis = horarios;
+        _isLoadingHorarios = false;
+      });
+
+      if (horarios.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nenhum horário disponível nesta data'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Erro ao buscar horários: $e');
+      setState(() {
+        _horariosDisponiveis = [];
+        _isLoadingHorarios = false;
+      });
     }
   }
 
@@ -84,7 +127,7 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       return;
     }
 
-    if (_selectedTime == null) {
+    if (_selectedHorario == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Selecione um horário'),
@@ -94,10 +137,10 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       return;
     }
 
-    if (_selectedClienteCpf == null) {
+    if (_selectedMedicoCpf == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Selecione um cliente'),
+          content: Text('Selecione um médico'),
           backgroundColor: Colors.red,
         ),
       );
@@ -110,13 +153,18 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
       // Gerar código aleatório
       final codigo = Random().nextInt(10000);
 
+      // Extrair hora e minuto do horário selecionado
+      final horaInicio = _selectedHorario!['hora_inicio'].split(':');
+      final hora = int.parse(horaInicio[0]);
+      final minuto = int.parse(horaInicio[1]);
+
       // Combinar data e hora
       final dateTime = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
         _selectedDate!.day,
-        _selectedTime!.hour,
-        _selectedTime!.minute,
+        hora,
+        minuto,
       );
 
       final userData = await _apiService.getUserData();
@@ -125,8 +173,8 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
         codigo: codigo,
         data: dateTime.toIso8601String(),
         descricao: _descricaoController.text,
-        userCpf: _selectedClienteCpf!, // CPF do cliente selecionado
-        medicoCpf: userData!['cpf'], // CPF do médico logado
+        userCpf: userData!['cpf'],
+        medicoCpf: _selectedMedicoCpf!,
       );
 
       setState(() => _isLoading = false);
@@ -139,7 +187,6 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
           ),
         );
 
-        // Retorna true para indicar que criou com sucesso
         Navigator.pop(context, true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -183,87 +230,80 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Seletor de Data
-              Card(
-                elevation: 2,
-                child: ListTile(
-                  leading: const Icon(Icons.calendar_today, color: Colors.blue),
-                  title: const Text('Data da Consulta'),
-                  subtitle: Text(
-                    _selectedDate != null
-                        ? '${_selectedDate!.day.toString().padLeft(2, '0')}/${_selectedDate!.month.toString().padLeft(2, '0')}/${_selectedDate!.year}'
-                        : 'Selecione a data',
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _selectDate,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Seletor de Hora
-              Card(
-                elevation: 2,
-                child: ListTile(
-                  leading: const Icon(Icons.access_time, color: Colors.blue),
-                  title: const Text('Horário da Consulta'),
-                  subtitle: Text(
-                    _selectedTime != null
-                        ? '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}'
-                        : 'Selecione o horário',
-                  ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _selectTime,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Seletor de Cliente
+              // Seletor de Médico
               Card(
                 elevation: 2,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: _isLoadingClientes
+                  child: _isLoadingMedicos
                       ? const Padding(
                     padding: EdgeInsets.all(16),
                     child: Center(child: CircularProgressIndicator()),
                   )
-                      : _clientes.isEmpty
+                      : _medicos.isEmpty
                       ? const Padding(
                     padding: EdgeInsets.all(16),
                     child: Text(
-                      'Nenhum cliente disponível',
+                      'Nenhum médico disponível',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey),
                     ),
                   )
                       : DropdownButtonFormField<String>(
                     decoration: const InputDecoration(
-                      labelText: 'Selecione o Cliente',
-                      prefixIcon: Icon(Icons.person, color: Colors.blue),
+                      labelText: 'Selecione o Médico',
+                      prefixIcon: Icon(Icons.medical_services, color: Colors.blue),
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                    value: _selectedClienteCpf,
+                    value: _selectedMedicoCpf,
                     isExpanded: true,
-                    items: _clientes.map<DropdownMenuItem<String>>((cliente) {
+                    items: _medicos.map((medico) {
                       return DropdownMenuItem<String>(
-                        value: cliente['cpf']?.toString(),
-                        child: Text(
-                          cliente['nome'] ?? 'Nome não informado',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                        value: medico['cpf'],
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    medico['nome'] ?? 'Nome não informado',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  Text(
+                                    medico['especificacao'] ?? 'Especialização',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }).toList(),
                     onChanged: (value) {
-                      setState(() => _selectedClienteCpf = value);
+                      setState(() {
+                        _selectedMedicoCpf = value;
+                        _selectedDate = null;
+                        _selectedHorario = null;
+                        _horariosDisponiveis = [];
+                      });
                     },
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Selecione um cliente';
+                      if (value == null) {
+                        return 'Selecione um médico';
                       }
                       return null;
                     },
@@ -271,6 +311,121 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                 ),
               ),
               const SizedBox(height: 16),
+
+              // Seletor de Data
+              Card(
+                elevation: 2,
+                child: ListTile(
+                  enabled: _selectedMedicoCpf != null,
+                  leading: Icon(
+                    Icons.calendar_today,
+                    color: _selectedMedicoCpf != null ? Colors.blue : Colors.grey,
+                  ),
+                  title: const Text('Data da Consulta'),
+                  subtitle: Text(
+                    _selectedDate != null
+                        ? '${_selectedDate!.day.toString().padLeft(2, '0')}/${_selectedDate!.month.toString().padLeft(2, '0')}/${_selectedDate!.year}'
+                        : _selectedMedicoCpf == null
+                        ? 'Selecione um médico primeiro'
+                        : 'Selecione a data',
+                    style: TextStyle(
+                      color: _selectedMedicoCpf == null ? Colors.grey : null,
+                    ),
+                  ),
+                  trailing: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: _selectedMedicoCpf != null ? null : Colors.grey,
+                  ),
+                  onTap: _selectedMedicoCpf != null ? _selectDate : null,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Seletor de Horário
+              if (_selectedDate != null) ...[
+                Card(
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time, color: Colors.blue),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Selecione o Horário',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        if (_isLoadingHorarios)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (_horariosDisponiveis.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.orange),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Nenhum horário disponível nesta data',
+                                    style: TextStyle(color: Colors.orange[800]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _horariosDisponiveis.map((horario) {
+                              final isSelected = _selectedHorario == horario;
+                              final horaInicio = horario['hora_inicio'].substring(0, 5);
+                              final horaFim = horario['hora_fim'].substring(0, 5);
+
+                              return ChoiceChip(
+                                label: Text('$horaInicio - $horaFim'),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _selectedHorario = selected ? horario : null;
+                                  });
+                                },
+                                selectedColor: Colors.blue,
+                                labelStyle: TextStyle(
+                                  color: isSelected ? Colors.white : Colors.black87,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                backgroundColor: Colors.grey[200],
+                              );
+                            }).toList(),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Campo de Descrição
               TextFormField(

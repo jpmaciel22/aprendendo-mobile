@@ -176,8 +176,7 @@ class _AgendamentosPageState extends State<AgendamentosPage> {
         title: const Text('Meus Agendamentos'),
         backgroundColor: Colors.blue,
       ),
-      // Só mostra o botão se NÃO for cliente (ou seja, se for médico)
-      floatingActionButton: !isCliente ? FloatingActionButton(
+      floatingActionButton: isCliente ? FloatingActionButton(
         onPressed: () async {
           final result = await Navigator.push(
             context,
@@ -206,7 +205,7 @@ class _AgendamentosPageState extends State<AgendamentosPage> {
               'Nenhum agendamento encontrado',
               style: TextStyle(fontSize: 18, color: Colors.grey),
             ),
-            if (!isCliente) ...[
+            if (isCliente) ...[
               SizedBox(height: 8),
               Text(
                 'Clique no + para criar um novo',

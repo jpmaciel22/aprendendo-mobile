@@ -4,6 +4,7 @@ import 'login.dart';
 import 'api_service.dart';
 import 'agendamentos_page.dart';
 import 'encontrar_medicos_page.dart';
+import 'disponibilidade_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -199,6 +200,18 @@ class _HomePageState extends State<HomePage> {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => const AgendamentosPage(),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.schedule),
+                title: const Text('Minha Disponibilidade'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const DisponibilidadePage(),
                     ),
                   );
                 },

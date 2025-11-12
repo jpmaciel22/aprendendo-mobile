@@ -12,7 +12,7 @@ class ApiService {
     required String nome,
     required String cpf,
     required String telefone,
-    required String typeUser, // 'cliente' ou 'medico'
+    required String typeUser,
     String? regiao,
     String? especificacao,
   }) async {
@@ -52,7 +52,7 @@ class ApiService {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
-    required String typeUser, // 'cliente' ou 'medico'
+    required String typeUser,
   }) async {
     try {
       final response = await http.post(
@@ -69,10 +69,7 @@ class ApiService {
         final data = jsonDecode(response.body);
         final token = data['token'];
 
-        // Salvar token
         await _saveToken(token);
-
-        // Decodificar payload do JWT
         final payload = _decodeJWT(token);
 
         return {
@@ -96,25 +93,21 @@ class ApiService {
     }
   }
 
-  // Salvar token no dispositivo
   Future<void> _saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
   }
 
-  // Obter token salvo
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token');
   }
 
-  // Remover token (logout)
   Future<void> removeToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
   }
 
-  // Decodificar JWT para obter dados do usuário
   Map<String, dynamic> _decodeJWT(String token) {
     try {
       final parts = token.split('.');
@@ -131,24 +124,22 @@ class ApiService {
     }
   }
 
-  // Verificar se está autenticado
   Future<bool> isAuthenticated() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
   }
 
-  // Obter dados do usuário logado
   Future<Map<String, dynamic>?> getUserData() async {
     final token = await getToken();
     if (token == null) return null;
     return _decodeJWT(token);
   }
 
-  // Buscar clientes (usuários) - usado por médicos
+  // ✅ Buscar MÉDICOS (usado por CLIENTES para criar consulta)
   Future<List<dynamic>> getMedicos() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/tasks/getUsers'),
+        Uri.parse('$baseUrl/tasks/getMedicos'),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -158,12 +149,12 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('Erro ao buscar clientes: $e');
+      print('Erro ao buscar médicos: $e');
       return [];
     }
   }
 
-  // Criar nova consulta
+  // ✅ Criar nova consulta (CLIENTE escolhe MÉDICO)
   Future<Map<String, dynamic>> criarConsulta({
     required int codigo,
     required String data,
@@ -223,6 +214,8 @@ class ApiService {
       return [];
     }
   }
+
+  // Buscar médicos por região
   Future<Map<String, dynamic>> buscarMedicosPorRegiao(String regiao) async {
     try {
       final response = await http.post(
@@ -256,6 +249,8 @@ class ApiService {
       };
     }
   }
+
+  // Marcar consulta como realizada
   Future<Map<String, dynamic>> marcarConsultaRealizada(int codigo) async {
     try {
       final response = await http.post(
@@ -270,6 +265,107 @@ class ApiService {
 
       return {
         'success': response.statusCode == 201,
+        'message': data['message'] ?? 'Erro desconhecido',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erro de conexão: $e',
+      };
+    }
+  }
+  Future<Map<String, dynamic>> criarDisponibilidade({
+    required String medicoCpf,
+    required String dataInicio,
+    required String dataFim,
+    required List<Map<String, String>> horarios,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/disponibilidade/criar'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'medico_cpf': medicoCpf,
+          'data_inicio': dataInicio,
+          'data_fim': dataFim,
+          'horarios': horarios,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      return {
+        'success': response.statusCode == 201,
+        'message': data['message'] ?? 'Erro desconhecido',
+        'total': data['total'] ?? 0,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erro de conexão: $e',
+      };
+    }
+  }
+
+// Buscar disponibilidades do médico
+  Future<List<dynamic>> getDisponibilidades(String medicoCpf) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/disponibilidade/get'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'medico_cpf': medicoCpf}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      print('Erro ao buscar disponibilidades: $e');
+      return [];
+    }
+  }
+
+// Buscar horários disponíveis de um médico em uma data
+  Future<List<dynamic>> getHorariosDisponiveis({
+    required String medicoCpf,
+    required String data,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/disponibilidade/horarios'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'medico_cpf': medicoCpf,
+          'data': data,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data_response = jsonDecode(response.body);
+        return data_response['data'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      print('Erro ao buscar horários disponíveis: $e');
+      return [];
+    }
+  }
+
+// Deletar disponibilidade
+  Future<Map<String, dynamic>> deletarDisponibilidade(int idDisponibilidade) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/disponibilidade/deletar'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'id_disponibilidade': idDisponibilidade}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      return {
+        'success': response.statusCode == 200,
         'message': data['message'] ?? 'Erro desconhecido',
       };
     } catch (e) {
