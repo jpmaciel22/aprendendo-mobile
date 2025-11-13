@@ -16,7 +16,7 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
 
   DateTime? _selectedDate;
   String? _selectedMedicoCpf;
-  Map<String, dynamic>? _selectedHorario; // Horário completo com hora_inicio e hora_fim
+  Map<String, dynamic>? _selectedHorario;
 
   List<dynamic> _medicos = [];
   List<dynamic> _horariosDisponiveis = [];
@@ -71,10 +71,9 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _selectedHorario = null; // Reseta horário quando muda a data
+        _selectedHorario = null;
       });
 
-      // Buscar horários disponíveis
       await _loadHorariosDisponiveis();
     }
   }
@@ -85,7 +84,7 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     setState(() => _isLoadingHorarios = true);
 
     try {
-      final dataFormatada = _selectedDate!.toIso8601String().split('T')[0]; // YYYY-MM-DD
+      final dataFormatada = _selectedDate!.toIso8601String().split('T')[0];
 
       final horarios = await _apiService.getHorariosDisponiveis(
         medicoCpf: _selectedMedicoCpf!,
@@ -150,15 +149,12 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Gerar código aleatório
       final codigo = Random().nextInt(10000);
 
-      // Extrair hora e minuto do horário selecionado
       final horaInicio = _selectedHorario!['hora_inicio'].split(':');
       final hora = int.parse(horaInicio[0]);
       final minuto = int.parse(horaInicio[1]);
 
-      // Combinar data e hora
       final dateTime = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
@@ -230,7 +226,7 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Seletor de Médico
+              // Seletor de Médico - CORRIGIDO
               Card(
                 elevation: 2,
                 child: Padding(
@@ -254,42 +250,18 @@ class _NovaConsultaPageState extends State<NovaConsultaPage> {
                       labelText: 'Selecione o Médico',
                       prefixIcon: Icon(Icons.medical_services, color: Colors.blue),
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                     ),
                     value: _selectedMedicoCpf,
                     isExpanded: true,
                     items: _medicos.map((medico) {
                       return DropdownMenuItem<String>(
                         value: medico['cpf'],
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    medico['nome'] ?? 'Nome não informado',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                  Text(
-                                    medico['especificacao'] ?? 'Especialização',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          '${medico['nome'] ?? 'Nome não informado'} - ${medico['especificacao'] ?? 'Especialização'}',
+                          style: const TextStyle(fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       );
                     }).toList(),
